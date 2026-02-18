@@ -1,7 +1,7 @@
 package currency_conversion
 
 import (
-	"biyobot/models"
+	"biyobot/configs"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -65,26 +65,26 @@ func toAmount(raw int64, currency string) string {
 
 type Service struct{}
 
-func (s *Service) Run(msg json.RawMessage) models.ServiceResult {
+func (s *Service) Run(msg json.RawMessage) configs.ServiceResult {
 	var input Input
 	if err := json.Unmarshal(msg, &input); err != nil {
-		return models.Failure("invalid input: " + err.Error())
+		return configs.Failure("invalid input: " + err.Error())
 	}
 	if input.FromAmount == "" {
-		return models.Failure("`amount` is required")
+		return configs.Failure("`amount` is required")
 	}
 	if input.From == "" {
-		return models.Failure("`from` is required")
+		return configs.Failure("`from` is required")
 	}
 	if input.To == "" {
-		return models.Failure("`to` is required")
+		return configs.Failure("`to` is required")
 	}
 	fromRaw, err := toRaw(input.FromAmount, input.From)
 	if err != nil {
-		return models.Failure(err.Error())
+		return configs.Failure(err.Error())
 	}
 	convertedRaw := convert(fromRaw, input.From, 149.50, input.To)
-	return models.Success(Output{
+	return configs.Success(Output{
 		ConvertedRaw:    convertedRaw,
 		ConvertedAmount: toAmount(convertedRaw, input.To),
 	})

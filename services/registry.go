@@ -1,27 +1,27 @@
 package services
 
 import (
-	"biyobot/models"
+	"biyobot/configs"
 	"encoding/json"
 	"fmt"
 )
 
 type Registry struct {
-	services map[string]models.Runner
+	services map[string]configs.Runner
 }
 
 func NewRegistry() *Registry {
-	return &Registry{services: make(map[string]models.Runner)}
+	return &Registry{services: make(map[string]configs.Runner)}
 }
 
-func (r *Registry) Register(name string, svc models.Runner) {
+func (r *Registry) Register(name string, svc configs.Runner) {
 	r.services[name] = svc
 }
 
-func (r *Registry) Run(name string, input json.RawMessage) models.ServiceResult {
+func (r *Registry) Run(name string, input json.RawMessage) configs.ServiceResult {
 	svc, ok := r.services[name]
 	if !ok {
-		return models.Failure(fmt.Sprintf("unknown service: %q", name))
+		return configs.Failure(fmt.Sprintf("unknown service: %q", name))
 	}
 	return svc.Run(input)
 }

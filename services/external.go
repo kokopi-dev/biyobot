@@ -1,7 +1,7 @@
 package services
 
 import (
-	"biyobot/models"
+	"biyobot/configs"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -18,7 +18,7 @@ type ExternalRunner struct {
 	Env        []string // extra env vars in "KEY=VALUE" form
 }
 
-func (e *ExternalRunner) Run(input json.RawMessage) models.ServiceResult {
+func (e *ExternalRunner) Run(input json.RawMessage) configs.ServiceResult {
 	timeout := e.Timeout
 	if timeout == 0 {
 		timeout = 30 * time.Second
@@ -47,7 +47,7 @@ func (e *ExternalRunner) Run(input json.RawMessage) models.ServiceResult {
 
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return models.Failure(fmt.Sprintf("timed out after %s", timeout))
+			return configs.Failure(fmt.Sprintf("timed out after %s", timeout))
 		}
 		// Non-zero exit: try to parse stdout as ServiceResult anyway,
 		// fall back to a generic error with stderr
@@ -58,7 +58,7 @@ func (e *ExternalRunner) Run(input json.RawMessage) models.ServiceResult {
 		if s := stderr.String(); s != "" {
 			msg += "\nstderr: " + s
 		}
-		return models.Failure(msg)
+		return configs.Failure(msg)
 	}
 
 	result, err := parseOutput(stdout.Bytes())
@@ -67,16 +67,16 @@ func (e *ExternalRunner) Run(input json.RawMessage) models.ServiceResult {
 		if len(raw) > 200 {
 			raw = raw[:200] + "..."
 		}
-		return models.Failure(fmt.Sprintf("invalid output (expected ServiceResult JSON): %v\ngot: %s", err, raw))
+		return configs.Failure(fmt.Sprintf("invalid output (expected ServiceResult JSON): %v\ngot: %s", err, raw))
 	}
 	return result
 }
 
-func parseOutput(b []byte) (models.ServiceResult, error) {
+func parseOutput(b []byte) (configs.ServiceResult, error) {
 	b = bytes.TrimSpace(b)
-	var result models.ServiceResult
+	var result configs.ServiceResult
 	if err := json.Unmarshal(b, &result); err != nil {
-		return models.ServiceResult{}, err
+		return configs.ServiceResult{}, err
 	}
 	return result, nil
 }
