@@ -1,8 +1,9 @@
 package main
 
 import (
-	"biyobot/configs"
-	"biyobot/discord"
+	// "biyobot/configs"
+	// "biyobot/discord"
+	"biyobot/llm"
 	"biyobot/services"
 	"biyobot/services/currency_conversion"
 	"biyobot/services/database"
@@ -19,17 +20,29 @@ func main() {
 	// if err != nil {
 	// 	log.Fatal(err)
 	// }
+
+	// startup db services
+	dbm := database.NewDatabaseManager()
+	// TODO make a better repo collection system
+	notifyRepo := database.NewNotificationsRepo(dbm)
+
 	// ollama client
 	client, err := api.ClientFromEnvironment()
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("client: %v", client)
-
-	// // startup db services
-	// dbm := database.NewDatabaseManager()
-	// // TODO make a better repo collection system
-	// notifyRepo := database.NewNotificationsRepo(dbm)
+	testMessages := []string{
+        "schedule party at 2/18 at 19:00",
+        "2月18日のパーティーを削除",
+        "edit meeting to tomorrow 3pm",
+    }
+	for _, msg := range testMessages {
+        fmt.Printf("\nMessage: %s\n", msg)
+        result, _ := llm.DetectIntent(client, msg, notifyRepo)
+        resultJSON, _ := json.MarshalIndent(result, "", "  ")
+        fmt.Printf("Result: %s\n", string(resultJSON))
+    }
 
 	// register services
 	reg := services.NewRegistry()

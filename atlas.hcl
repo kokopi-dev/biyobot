@@ -12,7 +12,7 @@ data "external_schema" "app" {
 
 env "app" {
   src = data.external_schema.app.url
-  dev = "sqlite://app.db?mode=memory&cache=shared&_fk=1"
+  dev = "sqlite://dbs/app_dev.db?mode=memory&cache=shared&_fk=1"
   url = "sqlite://dbs/app.db?mode=memory&cache=shared&_fk=1"
   migration {
     dir = "file://migrations"

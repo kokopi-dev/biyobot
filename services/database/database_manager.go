@@ -3,7 +3,7 @@ package database
 import (
 	"log"
 
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -13,7 +13,7 @@ type DatabaseManager struct {
 }
 
 func NewDatabaseManager() *DatabaseManager {
-	db, err := gorm.Open(sqlite.Open("dbs/master.db"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("dbs/app.db"), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to load db: ", err)
 	}
@@ -23,8 +23,8 @@ func NewDatabaseManager() *DatabaseManager {
 	db.Exec("PRAGMA busy_timeout=5000")
 
 	return &DatabaseManager{
-		appDB:      db,
-		dbsDir:        "./dbs",
+		appDB:  db,
+		dbsDir: "./dbs",
 	}
 }
 
