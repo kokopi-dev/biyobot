@@ -2,6 +2,7 @@ package discord
 
 import (
 	"biyobot/configs"
+	"biyobot/services"
 	"fmt"
 	"log"
 	"os"
@@ -14,16 +15,18 @@ import (
 type DiscordBot struct {
 	Session   *discordgo.Session
 	AppConfig *configs.AppConfig
+	Services  *services.Registry
 }
 
-func NewDiscordBot(conf *configs.AppConfig) (*DiscordBot) {
+func NewDiscordBot(conf *configs.AppConfig, services *services.Registry) *DiscordBot {
 	session, err := discordgo.New("Bot " + conf.DiscordToken)
 	if err != nil {
 		log.Fatal("Error creating Discord session:", err)
 	}
 	return &DiscordBot{
-		Session: session,
+		Session:   session,
 		AppConfig: conf,
+		Services: services,
 	}
 }
 func (b *DiscordBot) Start() {
@@ -45,6 +48,21 @@ func (b *DiscordBot) Start() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+}
+
+func (b *DiscordBot) dmUser(userID string, message string) error {
+    channel, err := b.Session.UserChannelCreate(userID)
+    if err != nil {
+        return fmt.Errorf("failed to create DM channel with user %s: %w", userID, err)
+    }
+
+    // Send the message to the DM channel
+    _, err = b.Session.ChannelMessageSend(channel.ID, message)
+    if err != nil {
+        return fmt.Errorf("failed to send DM to user %s: %w", userID, err)
+    }
+
+    return nil
 }
 
 func (b *DiscordBot) onReady(s *discordgo.Session, event *discordgo.Ready) {

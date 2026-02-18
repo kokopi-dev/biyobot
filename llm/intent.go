@@ -32,7 +32,7 @@ var SERVICES = map[string]ServiceConfig{
         KeywordsJA: []string{"レシート", "領収書", "追加", "経費"},
     },
     "scheduler": {
-        KeywordsEN: []string{"schedule", "remind", "event", "meeting", "party"},
+        KeywordsEN: []string{"notify", "schedule", "remind", "event", "meeting", "party"},
         KeywordsJA: []string{"スケジュール", "予定", "予約", "リマインド", "パーティー"},
     },
 }
@@ -58,11 +58,18 @@ func keywordMatch(message string) string {
     return ""
 }
 
+// type AddNotificationDto struct {
+// 	Service  string    `json:"service"`
+// 	Metadata string    `json:"metadata"`
+// 	NotifyAt time.Time `json:"notify_at"`
+// 	Title    string    `json:"title"`
+// 	Message  string    `json:"message"`
+// }
 func extractParams(client *api.Client, service, message string) (map[string]any, error) {
     schemas := map[string]string{
         "currency_converter": `{"amount": number, "from_currency": "USD/JPY", "to_currency": "USD/JPY"}`,
         "receipts": `{"has_image": boolean}`,
-        "schedule": `{"event_name": string, "date": "YYYY-MM-DD", "time": "HH:MM"}`,
+		"schedule": `{"event_name": string, "date": "YYYY-MM-DD", "time": "HH:MM", "action": "add | edit | delete"}`,
     }
 
     prompt := fmt.Sprintf(`Extract parameters from this message for the %s service.
