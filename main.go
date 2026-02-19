@@ -8,6 +8,7 @@ import (
 	"biyobot/services/currency_conversion"
 	"biyobot/services/database"
 	"biyobot/services/notifications"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -27,6 +28,7 @@ func main() {
 	dbm := database.NewDatabaseManager()
 	// TODO make a better repo collection system
 	notifyRepo := database.NewNotificationsRepo(dbm)
+	discordMessageRepo := database.NewDiscordMessageRepo(dbm)
 
 	// ollama client
 	client, err := api.ClientFromEnvironment()
@@ -36,17 +38,17 @@ func main() {
 	log.Println("Loaded Ollama client.")
 
 	testMessages := []string{
-        "schedule party at 2/18 at 19:00",
-        "2月18日のパーティーを削除",
-        "edit meeting to tomorrow 3pm",
-    }
+		"schedule party at 2/18 at 19:00",
+		"2月18日のパーティーを削除",
+		"edit meeting to tomorrow 3pm",
+	}
 	intentService := llm.NewIntentService(client, notifyRepo, appConf)
 	for _, msg := range testMessages {
-        fmt.Printf("\nMessage: %s\n", msg)
-        result, _ := intentService.DetectIntent(appConf.DiscordSrvSchedulerCid, msg)
-        resultJSON, _ := json.MarshalIndent(result, "", "  ")
-        fmt.Printf("Result: %s\n", string(resultJSON))
-    }
+		fmt.Printf("\nMessage: %s\n", msg)
+		result, _ := intentService.DetectIntent(appConf.DiscordSrvSchedulerCid, msg)
+		resultJSON, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Printf("Result: %s\n", string(resultJSON))
+	}
 
 	// register services
 	reg := services.NewRegistry()
@@ -73,7 +75,12 @@ func main() {
 	// } else {
 	// 	fmt.Printf("Result: %s\n", string(py_result.Data))
 	// }
-	discordBot := discord.NewDiscordBot(appConf, reg, intentService)
+	discordBot := discord.NewDiscordBot(appConf, reg, intentService, discordMessageRepo)
 	discordBot.Start()
-}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// start background tasks
+	services.StartBackgroundTask(ctx, 180, discordBot.DeleteExpiredMessages)
+}

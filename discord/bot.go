@@ -4,6 +4,8 @@ import (
 	"biyobot/configs"
 	"biyobot/llm"
 	"biyobot/services"
+	"biyobot/services/database"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -11,16 +13,18 @@ import (
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/google/uuid"
 )
 
 type DiscordBot struct {
-	Session       *discordgo.Session
-	AppConfig     *configs.AppConfig
-	Services      *services.Registry
-	IntentService *llm.IntentService
+	Session            *discordgo.Session
+	AppConfig          *configs.AppConfig
+	Services           *services.Registry
+	IntentService      *llm.IntentService
+	DiscordMessageRepo *database.DiscordMessageRepo
 }
 
-func NewDiscordBot(conf *configs.AppConfig, services *services.Registry, intentService *llm.IntentService) *DiscordBot {
+func NewDiscordBot(conf *configs.AppConfig, services *services.Registry, intentService *llm.IntentService, messageRepo *database.DiscordMessageRepo) *DiscordBot {
 	session, err := discordgo.New("Bot " + conf.DiscordToken)
 	if err != nil {
 		log.Fatal("Error creating Discord session:", err)
@@ -30,6 +34,7 @@ func NewDiscordBot(conf *configs.AppConfig, services *services.Registry, intentS
 		AppConfig:     conf,
 		Services:      services,
 		IntentService: intentService,
+		DiscordMessageRepo: messageRepo,
 	}
 }
 func (b *DiscordBot) Start() {
@@ -51,6 +56,32 @@ func (b *DiscordBot) Start() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+}
+
+func (b *DiscordBot) DeleteExpiredMessages(ctx context.Context) {
+	expiredMessages, err := b.DiscordMessageRepo.GetAllExpiredMessages()
+	if err != nil {
+		log.Println("Getting expired messages failed")
+		return
+	}
+	var ids []uuid.UUID
+	for _, e := range expiredMessages {
+		err := b.Session.ChannelMessageDelete(e.ChannelId, e.MessageId)
+		if err == nil {
+			ids = append(ids, e.ID)
+		}
+	}
+	if len(ids) != 0 {
+		err := b.DiscordMessageRepo.DeleteMessageBatch(ids)
+		if err != nil {
+			log.Println("Getting expired messages failed")
+			return
+		}
+	}
+}
+
+func (b *DiscordBot) tagMessageAsExpired() {
+
 }
 
 // handles notifications service

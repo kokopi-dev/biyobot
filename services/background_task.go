@@ -13,7 +13,7 @@ func (t *Task) Stop() {
     t.cancel()
 }
 
-func Start(ctx context.Context, intervalSeconds int, fn func(ctx context.Context)) *Task {
+func StartBackgroundTask(ctx context.Context, intervalSeconds int, fn func(ctx context.Context)) *Task {
     taskCtx, cancel := context.WithCancel(ctx)
 
     go func() {
