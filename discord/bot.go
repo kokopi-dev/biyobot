@@ -43,7 +43,7 @@ func NewDiscordBot(conf *configs.AppConfig, services *services.Registry, intentS
 		NotificationsRepo:  notifyRepo,
 	}
 }
-func (b *DiscordBot) Start() {
+func (b *DiscordBot) Start(ctx context.Context) {
 	// discord bot client
 	b.Session.AddHandler(b.onReady)
 	b.Session.AddHandler(b.onMessageCreate)
@@ -57,6 +57,11 @@ func (b *DiscordBot) Start() {
 		os.Exit(1)
 	}
 	defer b.Session.Close()
+
+	// start background tasks
+	fmt.Println("Starting bot background tasks")
+	services.StartBackgroundTask(ctx, 180, b.DeleteExpiredMessages)
+	services.StartBackgroundTask(ctx, 60, b.HandleNotificationDm)
 
 	fmt.Println("Bot is running. Press Ctrl+C to exit.")
 	stop := make(chan os.Signal, 1)
@@ -147,10 +152,65 @@ func (b *DiscordBot) tagMessageToBeDeleted(msg *discordgo.Message, secondsTillDe
 
 // handles notifications service
 func (b *DiscordBot) handleNotifications(intent *llm.IntentResult, discordMeta *configs.DiscordMetadata) {
+	metadata, err := utils.StructToJson(discordMeta)
+	if err != nil {
+		log.Println("failed to serialize discord metadata:", err)
+		return
+	}
+
+	var replyContent string
 	switch intent.Action {
 	case "add":
+		notifyAt, err := time.Parse(time.RFC3339, utils.ParamString(intent.Params, "notify_at"))
+		if err != nil {
+			log.Println("failed to parse notify_at:", err)
+			return
+		}
+		title := utils.ParamString(intent.Params, "title")
+		_, err = b.NotificationsRepo.AddNotification(database.AddNotificationDto{
+			Service:  "scheduler",
+			Metadata: metadata,
+			NotifyAt: notifyAt,
+			Title:    title,
+			Message:  utils.ParamString(intent.Params, "description"),
+		})
+		if err != nil {
+			log.Println("failed to add notification:", err)
+			return
+		}
+		replyContent = fmt.Sprintf("✅ Scheduled **%s** for %s", title, notifyAt.Format("Jan 02, 2006 15:04 MST"))
 	case "edit":
+		notifyAt, err := time.Parse(time.RFC3339, utils.ParamString(intent.Params, "notify_at"))
+		if err != nil {
+			log.Println("failed to parse notify_at:", err)
+			return
+		}
+		title := utils.ParamString(intent.Params, "title")
+		_, err = b.NotificationsRepo.EditNotification(database.EditNotificationDto{
+			ID:       utils.ParamString(intent.Params, "notification_id"),
+			Service:  "scheduler",
+			Metadata: metadata,
+			NotifyAt: notifyAt,
+			Title:    title,
+			Message:  utils.ParamString(intent.Params, "description"),
+		})
+		if err != nil {
+			log.Println("failed to edit notification:", err)
+			return
+		}
+		replyContent = fmt.Sprintf("✏️ Updated **%s** to %s", title, notifyAt.Format("Jan 02, 2006 15:04 MST"))
 	case "delete":
+		notificationId, err := uuid.Parse(utils.ParamString(intent.Params, "notification_id"))
+		if err != nil {
+			log.Println("failed to parse notification_id:", err)
+			return
+		}
+		err = b.NotificationsRepo.DeleteNotification(notificationId)
+		if err != nil {
+			log.Println("failed to delete notification:", err)
+			return
+		}
+		replyContent = fmt.Sprintf("🗑️ Deleted notification `%s`", notificationId)
 	}
 
 	b.updateNotifications()

@@ -20,3 +20,12 @@ func JsonToStruct[T any](data string) (T, error) {
     }
     return v, nil
 }
+
+func ParamString(params map[string]any, key string) string {
+	v, ok := params[key]
+	if !ok {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
+}

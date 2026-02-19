@@ -36,7 +36,7 @@ func (s *Service) Run(msg json.RawMessage) configs.ServiceResult {
 		return configs.Failure("invalid input: " + err.Error())
 	}
 
-	service := "discord"         // hardcoded discord
+	// service := "discord"         // hardcoded discord
 
 	if input.Action == "" {
 		return configs.Failure("`action` is required")

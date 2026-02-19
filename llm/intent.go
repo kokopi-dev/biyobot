@@ -235,7 +235,7 @@ Required schema:
 Message: "%s"
 
 Rules:
-- For edit/delete: If user mentions an event by name, find the matching ID from the list above.
+- For edit/delete: If user mentions an event by name, find the matching ID from "Current Data" Context above.
 - For datetime: Use RFC3339 format with +09:00 timezone.
 
 Return ONLY valid JSON matching the schema. Use 2026 for missing years.`,
