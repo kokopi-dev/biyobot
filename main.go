@@ -7,6 +7,7 @@ import (
 	"biyobot/services"
 	"biyobot/services/currency_conversion"
 	"biyobot/services/database"
+	"biyobot/services/notifications"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -49,7 +50,7 @@ func main() {
 
 	// register services
 	reg := services.NewRegistry()
-	reg.Register(configs.ServiceNames.Scheduler, &currency_conversion.Service{})
+	reg.Register(configs.ServiceNames.Scheduler, notifications.NewService(notifyRepo))
 	reg.Register("currency_converter", &currency_conversion.Service{})
 	reg.Register("pythonService", &services.ExternalRunner{
 		Executable: "external/test/venv/bin/python3",
@@ -72,7 +73,7 @@ func main() {
 	// } else {
 	// 	fmt.Printf("Result: %s\n", string(py_result.Data))
 	// }
-	discordBot := discord.NewDiscordBot(appConf, reg)
+	discordBot := discord.NewDiscordBot(appConf, reg, intentService)
 	discordBot.Start()
 }
 

@@ -3,6 +3,7 @@ package llm
 import (
 	"biyobot/configs"
 	"biyobot/services/database"
+	"biyobot/utils"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -29,7 +30,8 @@ type Action struct {
 }
 
 type IntentResult struct {
-	Service    string         `json:"service"`
+	Service string `json:"service"`
+	// add | edit | delete
 	Action     string         `json:"action"`
 	Confidence float64        `json:"confidence"`
 	Params     map[string]any `json:"params,omitempty"`
@@ -185,7 +187,7 @@ func (s *IntentService) llmDetectAction(serviceName string, service Service, mes
 		fmt.Fprintf(&actionList, "- %s: %s%s\n", action.Name, enKw, jaKw)
 	}
 
-	now := japanTimeNow()
+	now := utils.JapanTimeNow()
 	prompt := fmt.Sprintf(`Detect which action the user wants for the %s service.
 
 Context:
@@ -217,7 +219,7 @@ Return ONLY JSON: {"action": "action_name"}`, serviceName, now.Format(time.RFC33
 }
 
 func (s *IntentService) extractParams(serviceName, actionName string, schema map[string]string, message string) map[string]any {
-	now := japanTimeNow()
+	now := utils.JapanTimeNow()
 	contextStr := s.buildContext(serviceName)
 	schemaJSON, _ := json.MarshalIndent(schema, "", "  ")
 
@@ -285,10 +287,6 @@ func (s *IntentService) callLLM(prompt string) string {
 	return b.String()
 }
 
-func japanTimeNow() time.Time {
-	now := time.Now().In(time.FixedZone("JST", 9*60*60)) // UTC+9
-	return now
-}
 func extractJSON(s string) string {
 	return regexp.MustCompile(`\{[^}]+\}`).FindString(s)
 }

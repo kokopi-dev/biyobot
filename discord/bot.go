@@ -2,6 +2,7 @@ package discord
 
 import (
 	"biyobot/configs"
+	"biyobot/llm"
 	"biyobot/services"
 	"fmt"
 	"log"
@@ -13,20 +14,22 @@ import (
 )
 
 type DiscordBot struct {
-	Session   *discordgo.Session
-	AppConfig *configs.AppConfig
-	Services  *services.Registry
+	Session       *discordgo.Session
+	AppConfig     *configs.AppConfig
+	Services      *services.Registry
+	IntentService *llm.IntentService
 }
 
-func NewDiscordBot(conf *configs.AppConfig, services *services.Registry) *DiscordBot {
+func NewDiscordBot(conf *configs.AppConfig, services *services.Registry, intentService *llm.IntentService) *DiscordBot {
 	session, err := discordgo.New("Bot " + conf.DiscordToken)
 	if err != nil {
 		log.Fatal("Error creating Discord session:", err)
 	}
 	return &DiscordBot{
-		Session:   session,
-		AppConfig: conf,
-		Services: services,
+		Session:       session,
+		AppConfig:     conf,
+		Services:      services,
+		IntentService: intentService,
 	}
 }
 func (b *DiscordBot) Start() {
@@ -56,18 +59,18 @@ func (b *DiscordBot) handleNotifications(action string) {
 }
 
 func (b *DiscordBot) dmUser(userID string, message string) error {
-    channel, err := b.Session.UserChannelCreate(userID)
-    if err != nil {
-        return fmt.Errorf("failed to create DM channel with user %s: %w", userID, err)
-    }
+	channel, err := b.Session.UserChannelCreate(userID)
+	if err != nil {
+		return fmt.Errorf("failed to create DM channel with user %s: %w", userID, err)
+	}
 
-    // Send the message to the DM channel
-    _, err = b.Session.ChannelMessageSend(channel.ID, message)
-    if err != nil {
-        return fmt.Errorf("failed to send DM to user %s: %w", userID, err)
-    }
+	// Send the message to the DM channel
+	_, err = b.Session.ChannelMessageSend(channel.ID, message)
+	if err != nil {
+		return fmt.Errorf("failed to send DM to user %s: %w", userID, err)
+	}
 
-    return nil
+	return nil
 }
 
 func (b *DiscordBot) onReady(s *discordgo.Session, event *discordgo.Ready) {
@@ -80,14 +83,33 @@ func (b *DiscordBot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageC
 		return
 	}
 
-	switch m.Content {
-	case "!ping":
-		s.ChannelMessageSend(m.ChannelID, "Pong!")
-		s.ChannelMessageDelete(m.ChannelID, m.ID)
-	case "!hello":
-		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Hello, %s!", m.Author.Username))
-		s.ChannelMessageDelete(m.ChannelID, m.ID)
+	intent, err := b.IntentService.DetectIntent(m.ChannelID, m.Content)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, err.Error())
+		return
 	}
+	if intent.Service == configs.ServiceNames.Scheduler {
+		discordMetadata := &configs.DiscordMetadata{
+			ChannelId: m.ChannelID,
+			MessageId: m.MessageReference.MessageID,
+			UserId:    m.Author.ID,
+			Username:  m.Author.Username,
+		}
+		switch intent.Action {
+		case "add":
+		case "edit":
+		case "delete":
+		}
+	}
+
+	// switch m.Content {
+	// case "!ping":
+	// 	s.ChannelMessageSend(m.ChannelID, "Pong!")
+	// 	s.ChannelMessageDelete(m.ChannelID, m.ID)
+	// case "!hello":
+	// 	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Hello, %s!", m.Author.Username))
+	// 	s.ChannelMessageDelete(m.ChannelID, m.ID)
+	// }
 }
 
 func (b *DiscordBot) onGuildCreate(s *discordgo.Session, event *discordgo.GuildCreate) {
