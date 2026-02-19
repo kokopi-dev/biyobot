@@ -213,8 +213,20 @@ func (b *DiscordBot) handleNotifications(intent *llm.IntentResult, discordMeta *
 		replyContent = fmt.Sprintf("🗑️ Deleted notification `%s`", notificationId)
 	}
 
+	if replyContent != "" {
+		msg, err := b.Session.ChannelMessageSend(b.AppConfig.DiscordSrvSchedulerCid, replyContent)
+		if err != nil {
+			log.Println("failed to send reply:", err)
+		} else {
+			if err := b.tagMessageToBeDeleted(msg, 180); err != nil {
+				log.Println("failed to tag message for deletion:", err)
+			}
+		}
+	}
+
 	b.updateNotifications()
 }
+
 func formatNotifications(notifications []models.Notification) string {
 	if len(notifications) == 0 {
 		return "📭 No upcoming notifications."
@@ -224,13 +236,8 @@ func formatNotifications(notifications []models.Notification) string {
 	b.WriteString("📅 **Upcoming Notifications**\n\n")
 
 	for _, n := range notifications {
-		fmt.Fprintf(&b, "**%s**\n", n.Title)
-		fmt.Fprintf(&b, "📝 %s\n", n.Message)
-		fmt.Fprintf(&b, "⏰ %s\n", n.NotifyAt.Format("Jan 02, 2006 15:04 MST"))
-		if n.Service != "" {
-			fmt.Fprintf(&b, "🔧 %s\n", n.Service)
-		}
-		b.WriteString("\n")
+		fmt.Fprintf(&b, "⏰ %s — **%s** `[id:%s]`\n", n.NotifyAt.Format("Jan 02 15:04 MST"), n.Title, n.ID)
+		fmt.Fprintf(&b, "📝 %s\n\n", n.Message)
 	}
 
 	return b.String()
@@ -306,6 +313,7 @@ func (b *DiscordBot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageC
 		sentErrMsg, secondErr := s.ChannelMessageSend(m.ChannelID, err.Error())
 		if secondErr != nil {
 			log.Printf("Failed to send discord message: %s", err.Error())
+			return
 		}
 		b.tagMessageToBeDeleted(sentErrMsg, 180)
 		return
