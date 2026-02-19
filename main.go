@@ -2,7 +2,7 @@ package main
 
 import (
 	"biyobot/configs"
-	// "biyobot/discord"
+	"biyobot/discord"
 	"biyobot/llm"
 	"biyobot/services"
 	"biyobot/services/currency_conversion"
@@ -16,6 +16,7 @@ import (
 )
 
 func main() {
+	// init configs
 	appConf, err := configs.NewAppConfig()
 	if err != nil {
 		log.Fatal(err)
@@ -32,12 +33,12 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Println("Loaded Ollama client.")
+
 	testMessages := []string{
         "schedule party at 2/18 at 19:00",
         "2月18日のパーティーを削除",
         "edit meeting to tomorrow 3pm",
     }
-
 	intentService := llm.NewIntentService(client, notifyRepo, appConf)
 	for _, msg := range testMessages {
         fmt.Printf("\nMessage: %s\n", msg)
@@ -48,6 +49,7 @@ func main() {
 
 	// register services
 	reg := services.NewRegistry()
+	reg.Register(configs.ServiceNames.Scheduler, &currency_conversion.Service{})
 	reg.Register("currency_converter", &currency_conversion.Service{})
 	reg.Register("pythonService", &services.ExternalRunner{
 		Executable: "external/test/venv/bin/python3",
@@ -70,8 +72,7 @@ func main() {
 	// } else {
 	// 	fmt.Printf("Result: %s\n", string(py_result.Data))
 	// }
-	//
-	// discordBot := discord.NewDiscordBot(appConf, reg)
-	// discordBot.Start()
+	discordBot := discord.NewDiscordBot(appConf, reg)
+	discordBot.Start()
 }
 

@@ -44,7 +44,7 @@ type IntentService struct {
 
 func NewIntentService(client *api.Client, notificationRepo *database.NotificationsRepo, appConfig *configs.AppConfig) *IntentService {
 	services := map[string]Service{
-		"scheduler": {
+		configs.ServiceNames.Scheduler: {
 			DiscordChannelID: appConfig.DiscordSrvSchedulerCid,
 			KeywordsEN:       []string{"schedule", "event", "meeting", "party", "appointment"},
 			KeywordsJA:       []string{"スケジュール", "予定", "予約", "イベント"},
