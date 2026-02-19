@@ -12,6 +12,7 @@ import (
 type AppConfig struct {
 	DiscordToken string
 	DiscordMasterServerId string
+	DiscordSrvSchedulerCid string
 }
 
 func NewAppConfig() (*AppConfig, error) {
@@ -31,6 +32,10 @@ func NewAppConfig() (*AppConfig, error) {
 	if discordMasterServerId == "" {
 		missingVars = append(missingVars, "DISCORD_MASTER_SERVER_ID")
 	}
+	discordServiceSchedulerCid := os.Getenv("DISCORD_SERVICE_SCHEDULER_CID")
+	if discordServiceSchedulerCid  == "" {
+		missingVars = append(missingVars, "DISCORD_SERVICE_SCHEDULER_CID")
+	}
 
 	if len(missingVars) > 0 {
 		return nil, fmt.Errorf("missing required environment variables: %s",
@@ -39,5 +44,6 @@ func NewAppConfig() (*AppConfig, error) {
 	return &AppConfig{
 		DiscordToken: discordToken,
 		DiscordMasterServerId: discordMasterServerId,
+		DiscordSrvSchedulerCid: discordServiceSchedulerCid,
 	}, nil
 }

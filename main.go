@@ -1,7 +1,7 @@
 package main
 
 import (
-	// "biyobot/configs"
+	"biyobot/configs"
 	// "biyobot/discord"
 	"biyobot/llm"
 	"biyobot/services"
@@ -16,10 +16,10 @@ import (
 )
 
 func main() {
-	// appConf, err := configs.NewAppConfig()
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	appConf, err := configs.NewAppConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// startup db services
 	dbm := database.NewDatabaseManager()
@@ -31,15 +31,17 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("client: %v", client)
+	log.Println("Loaded Ollama client.")
 	testMessages := []string{
         "schedule party at 2/18 at 19:00",
         "2月18日のパーティーを削除",
         "edit meeting to tomorrow 3pm",
     }
+
+	intentService := llm.NewIntentService(client, notifyRepo, appConf)
 	for _, msg := range testMessages {
         fmt.Printf("\nMessage: %s\n", msg)
-        result, _ := llm.DetectIntent(client, msg, notifyRepo)
+        result, _ := intentService.DetectIntent(appConf.DiscordSrvSchedulerCid, msg)
         resultJSON, _ := json.MarshalIndent(result, "", "  ")
         fmt.Printf("Result: %s\n", string(resultJSON))
     }

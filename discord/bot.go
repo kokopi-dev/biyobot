@@ -50,6 +50,11 @@ func (b *DiscordBot) Start() {
 	<-stop
 }
 
+// handles notifications service
+func (b *DiscordBot) handleNotifications(action string) {
+
+}
+
 func (b *DiscordBot) dmUser(userID string, message string) error {
     channel, err := b.Session.UserChannelCreate(userID)
     if err != nil {
