@@ -75,7 +75,7 @@ func main() {
 	// } else {
 	// 	fmt.Printf("Result: %s\n", string(py_result.Data))
 	// }
-	discordBot := discord.NewDiscordBot(appConf, reg, intentService, discordMessageRepo)
+	discordBot := discord.NewDiscordBot(appConf, reg, intentService, discordMessageRepo, notifyRepo)
 	discordBot.Start()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -83,4 +83,5 @@ func main() {
 
 	// start background tasks
 	services.StartBackgroundTask(ctx, 180, discordBot.DeleteExpiredMessages)
+	services.StartBackgroundTask(ctx, 60, discordBot.HandleNotificationDm)
 }

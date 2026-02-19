@@ -3,14 +3,18 @@ package discord
 import (
 	"biyobot/configs"
 	"biyobot/llm"
+	"biyobot/models"
 	"biyobot/services"
 	"biyobot/services/database"
+	"biyobot/utils"
 	"context"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/google/uuid"
@@ -22,19 +26,21 @@ type DiscordBot struct {
 	Services           *services.Registry
 	IntentService      *llm.IntentService
 	DiscordMessageRepo *database.DiscordMessageRepo
+	NotificationsRepo  *database.NotificationsRepo
 }
 
-func NewDiscordBot(conf *configs.AppConfig, services *services.Registry, intentService *llm.IntentService, messageRepo *database.DiscordMessageRepo) *DiscordBot {
+func NewDiscordBot(conf *configs.AppConfig, services *services.Registry, intentService *llm.IntentService, messageRepo *database.DiscordMessageRepo, notifyRepo *database.NotificationsRepo) *DiscordBot {
 	session, err := discordgo.New("Bot " + conf.DiscordToken)
 	if err != nil {
 		log.Fatal("Error creating Discord session:", err)
 	}
 	return &DiscordBot{
-		Session:       session,
-		AppConfig:     conf,
-		Services:      services,
-		IntentService: intentService,
+		Session:            session,
+		AppConfig:          conf,
+		Services:           services,
+		IntentService:      intentService,
 		DiscordMessageRepo: messageRepo,
+		NotificationsRepo:  notifyRepo,
 	}
 }
 func (b *DiscordBot) Start() {
@@ -80,13 +86,134 @@ func (b *DiscordBot) DeleteExpiredMessages(ctx context.Context) {
 	}
 }
 
-func (b *DiscordBot) tagMessageAsExpired() {
+func (b *DiscordBot) HandleNotificationDm(ctx context.Context) {
+	expiredNotifications, err := b.NotificationsRepo.GetAllExpiredNotifications()
+	if err != nil {
+		log.Println("Discord bot failed to get expired notifications")
+		return
+	}
+	if len(expiredNotifications) == 0 {
+		return
+	}
+	var ids []uuid.UUID
+	for _, n := range expiredNotifications {
+		metadata, err := utils.JsonToStruct[configs.DiscordMetadata](n.Metadata)
+		if err != nil {
+			log.Printf("failed to parse metadata for notification %s: %v", n.ID, err)
+			continue
+		}
 
+		channel, err := b.Session.UserChannelCreate(metadata.UserId)
+		if err != nil {
+			log.Printf("failed to create DM channel for user %s: %v", metadata.UserId, err)
+			continue
+		}
+
+		content := fmt.Sprintf(
+			"🔔 **%s**\n\n%s\n\n⏰ Scheduled for: %s",
+			n.Title,
+			n.Message,
+			n.NotifyAt.Format("Jan 02, 2006 15:04 MST"),
+		)
+
+		sentMsg, err := b.Session.ChannelMessageSend(channel.ID, content)
+		if err != nil {
+			log.Printf("failed to send DM to user %s: %v", metadata.UserId, err)
+			continue
+		}
+		b.tagMessageToBeDeleted(sentMsg, 86400)
+
+		ids = append(ids, n.ID)
+	}
+
+	if len(ids) > 0 {
+		if err := b.NotificationsRepo.DeleteNotificationBatch(ids); err != nil {
+			log.Printf("failed to delete processed notifications: %v", err)
+		}
+	}
+}
+
+func (b *DiscordBot) tagMessageToBeDeleted(msg *discordgo.Message, secondsTillDelete int) error {
+	_, err := b.DiscordMessageRepo.AddMessage(database.AddDiscordMessageDto{
+		Action:          "delete",
+		ChannelId:       msg.ChannelID,
+		UserId:          msg.Author.ID,
+		MessageId:       msg.ID,
+		Content:         msg.Content,
+		ExecuteActionOn: utils.JapanTimeNow().Add(time.Duration(secondsTillDelete) * time.Second),
+	})
+	return err
 }
 
 // handles notifications service
-func (b *DiscordBot) handleNotifications(action string) {
+func (b *DiscordBot) handleNotifications(intent *llm.IntentResult, discordMeta *configs.DiscordMetadata) {
+	switch intent.Action {
+	case "add":
+	case "edit":
+	case "delete":
+	}
 
+	b.updateNotifications()
+}
+func formatNotifications(notifications []models.Notification) string {
+	if len(notifications) == 0 {
+		return "📭 No upcoming notifications."
+	}
+
+	var b strings.Builder
+	b.WriteString("📅 **Upcoming Notifications**\n\n")
+
+	for _, n := range notifications {
+		fmt.Fprintf(&b, "**%s**\n", n.Title)
+		fmt.Fprintf(&b, "📝 %s\n", n.Message)
+		fmt.Fprintf(&b, "⏰ %s\n", n.NotifyAt.Format("Jan 02, 2006 15:04 MST"))
+		if n.Service != "" {
+			fmt.Fprintf(&b, "🔧 %s\n", n.Service)
+		}
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+func (b *DiscordBot) getFirstMessageInChannel(channelID string) (*discordgo.Message, error) {
+	messages, err := b.Session.ChannelMessages(channelID, 1, "", "", "0")
+	if err != nil {
+		return nil, err
+	}
+	if len(messages) == 0 {
+		return nil, nil
+	}
+	return messages[0], nil
+}
+
+func (b *DiscordBot) updateNotifications() {
+	allNotifications, err := b.NotificationsRepo.GetAllNotifications()
+	if err != nil {
+		log.Println("Discord bot getting notifications failed.")
+		return
+	}
+	content := formatNotifications(allNotifications)
+	firstMsg, err := b.getFirstMessageInChannel(b.AppConfig.DiscordSrvSchedulerCid)
+	if err != nil {
+		log.Println("Discord bot failed to fetch notifications channel messages:", err)
+		return
+	}
+
+	// found 1st channel message, editing it
+	if firstMsg != nil {
+		_, err = b.Session.ChannelMessageEdit(b.AppConfig.DiscordSrvSchedulerCid, firstMsg.ID, content)
+		if err != nil {
+			log.Println("Discord bot failed to edit notifications message:", err)
+		}
+		return
+	}
+
+	// initializing 1st channel message
+	_, err = b.Session.ChannelMessageSend(b.AppConfig.DiscordSrvSchedulerCid, content)
+	if err != nil {
+		log.Println("Discord bot failed to send notifications message:", err)
+	}
 }
 
 func (b *DiscordBot) dmUser(userID string, message string) error {
@@ -116,7 +243,11 @@ func (b *DiscordBot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageC
 
 	intent, err := b.IntentService.DetectIntent(m.ChannelID, m.Content)
 	if err != nil {
-		s.ChannelMessageSend(m.ChannelID, err.Error())
+		sentErrMsg, secondErr := s.ChannelMessageSend(m.ChannelID, err.Error())
+		if secondErr != nil {
+			log.Printf("Failed to send discord message: %s", err.Error())
+		}
+		b.tagMessageToBeDeleted(sentErrMsg, 180)
 		return
 	}
 	if intent.Service == configs.ServiceNames.Scheduler {
@@ -126,11 +257,7 @@ func (b *DiscordBot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageC
 			UserId:    m.Author.ID,
 			Username:  m.Author.Username,
 		}
-		switch intent.Action {
-		case "add":
-		case "edit":
-		case "delete":
-		}
+		b.handleNotifications(intent, discordMetadata)
 	}
 
 	// switch m.Content {

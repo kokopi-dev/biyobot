@@ -2,8 +2,10 @@ package database
 
 import (
 	"biyobot/models"
+	"biyobot/utils"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -21,8 +23,14 @@ func (r *NotificationsRepo) GetAllNotifications() ([]models.Notification, error)
 	result := r.dbm.App().Find(&notifications)
 	return notifications, result.Error
 }
+func (r *NotificationsRepo) GetAllExpiredNotifications() ([]models.Notification, error) {
+	now := utils.JapanTimeNow().Add(10 * time.Minute)
+	var notifications []models.Notification
+	result := r.dbm.App().Where("notify_at <= ?", now).Find(&notifications)
+	return notifications, result.Error
+}
 
-func (r *NotificationsRepo) DeleteNotification(notificationId string) (error) {
+func (r *NotificationsRepo) DeleteNotification(notificationId uuid.UUID) (error) {
 	result := r.dbm.App().Delete(&models.Notification{}, "id = ?", notificationId)
 	if result.Error != nil {
 		return result.Error
@@ -31,6 +39,11 @@ func (r *NotificationsRepo) DeleteNotification(notificationId string) (error) {
 		return gorm.ErrRecordNotFound
 	}
 	return nil
+}
+func (r *NotificationsRepo) DeleteNotificationBatch(notificationIds []uuid.UUID) (error) {
+	return r.dbm.App().
+		Where("id IN ?", notificationIds).
+		Delete(&models.Notification{}).Error
 }
 
 type AddNotificationDto struct {

@@ -2,6 +2,7 @@ package database
 
 import (
 	"biyobot/models"
+	"biyobot/utils"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,7 +19,7 @@ func NewDiscordMessageRepo(dbm *DatabaseManager) *DiscordMessageRepo {
 func (r *DiscordMessageRepo) GetAllExpiredMessages() ([]models.DiscordMessage, error) {
 	var messages []models.DiscordMessage
 	err := r.dbm.App().
-		Where("execute_action_on <= ? AND deleted_at IS NULL", time.Now()).
+		Where("execute_action_on <= ? AND action = ?", utils.JapanTimeNow(), "delete").
 		Find(&messages).Error
 	return messages, err
 }
