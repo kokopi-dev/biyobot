@@ -20,6 +20,8 @@ func StartBackgroundTask(ctx context.Context, intervalSeconds int, fn func(ctx c
         ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
         defer ticker.Stop()
 
+		fn(taskCtx) // run immediately on startup
+
         for {
             select {
             case <-ticker.C:

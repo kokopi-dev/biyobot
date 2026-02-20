@@ -175,6 +175,7 @@ func (s *IntentService) DetectIntent(channelID, message string) (*IntentResult, 
 }
 
 func (s *IntentService) llmDetectAction(serviceName string, service Service, message string) string {
+	log.Println("Detecting action")
 	contextStr := s.buildContext(serviceName)
 
 	var actionList strings.Builder
@@ -191,7 +192,7 @@ func (s *IntentService) llmDetectAction(serviceName string, service Service, mes
 	prompt := fmt.Sprintf(`Detect which action the user wants for the %s service.
 
 Context:
-- Current Time: %s
+- Current Time (JST): %s
 - Current Data: %s
 
 Available actions:
@@ -219,6 +220,7 @@ Return ONLY JSON: {"action": "action_name"}`, serviceName, now.Format(time.RFC33
 }
 
 func (s *IntentService) extractParams(serviceName, actionName string, schema map[string]string, message string) map[string]any {
+	log.Println("Extracting params")
 	now := utils.JapanTimeNow()
 	contextStr := s.buildContext(serviceName)
 	schemaJSON, _ := json.MarshalIndent(schema, "", "  ")
@@ -226,7 +228,7 @@ func (s *IntentService) extractParams(serviceName, actionName string, schema map
 	prompt := fmt.Sprintf(`Extract parameters from this message for the %s.%s action.
 
 Context:
-- Current Time: %s
+- Current Time (JST): %s
 - Current Data: %s
 
 Required schema:
@@ -236,13 +238,17 @@ Message: "%s"
 
 Rules:
 - For edit/delete: If user mentions an event by name, find the matching ID from "Current Data" Context above.
-- For datetime: Use RFC3339 format with +09:00 timezone.
+- For datetime: The user is in Japan (JST, UTC+9). All times mentioned are JST. Format as RFC3339 with +09:00 offset. Example: if user says "12:00", output "2026-03-12T12:00:00+09:00", NOT "2026-03-12T03:00:00+09:00".
+- For title: use a clean, concise name extracted from the message, not the raw message itself.
+- For description: briefly describe the event, do not repeat the raw message.
+- Use 2026 for missing years.
 
-Return ONLY valid JSON matching the schema. Use 2026 for missing years.`,
+Return ONLY valid JSON matching the schema.`,
 		serviceName, actionName, now.Format(time.RFC3339), contextStr, string(schemaJSON), message)
 
 	response := s.callLLM(prompt)
 
+	log.Printf("Extracted: %s\n", response)
 	var params map[string]any
 	if jsonStr := extractJSON(response); jsonStr != "" {
 		json.Unmarshal([]byte(jsonStr), &params)

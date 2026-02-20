@@ -70,6 +70,7 @@ func (b *DiscordBot) Start(ctx context.Context) {
 }
 
 func (b *DiscordBot) DeleteExpiredMessages(ctx context.Context) {
+	log.Println("Running background task: deleting expired messages")
 	expiredMessages, err := b.DiscordMessageRepo.GetAllExpiredMessages()
 	if err != nil {
 		log.Println("Getting expired messages failed")
@@ -92,6 +93,7 @@ func (b *DiscordBot) DeleteExpiredMessages(ctx context.Context) {
 }
 
 func (b *DiscordBot) HandleNotificationDm(ctx context.Context) {
+	log.Println("Running background task: dming notifications")
 	expiredNotifications, err := b.NotificationsRepo.GetAllExpiredNotifications()
 	if err != nil {
 		log.Println("Discord bot failed to get expired notifications")
@@ -139,6 +141,7 @@ func (b *DiscordBot) HandleNotificationDm(ctx context.Context) {
 }
 
 func (b *DiscordBot) tagMessageToBeDeleted(msg *discordgo.Message, secondsTillDelete int) error {
+	log.Println("Tagging a message to be deleted")
 	_, err := b.DiscordMessageRepo.AddMessage(database.AddDiscordMessageDto{
 		Action:          "delete",
 		ChannelId:       msg.ChannelID,
@@ -151,11 +154,10 @@ func (b *DiscordBot) tagMessageToBeDeleted(msg *discordgo.Message, secondsTillDe
 }
 
 // handles notifications service
-func (b *DiscordBot) handleNotifications(intent *llm.IntentResult, discordMeta *configs.DiscordMetadata) {
+func (b *DiscordBot) handleNotifications(intent *llm.IntentResult, discordMeta *configs.DiscordMetadata) error {
 	metadata, err := utils.StructToJson(discordMeta)
 	if err != nil {
-		log.Println("failed to serialize discord metadata:", err)
-		return
+		return fmt.Errorf("failed to serialize discord metadata:", err)
 	}
 
 	var replyContent string
@@ -163,8 +165,7 @@ func (b *DiscordBot) handleNotifications(intent *llm.IntentResult, discordMeta *
 	case "add":
 		notifyAt, err := time.Parse(time.RFC3339, utils.ParamString(intent.Params, "notify_at"))
 		if err != nil {
-			log.Println("failed to parse notify_at:", err)
-			return
+			return fmt.Errorf("failed to parse notify_at:", err)
 		}
 		title := utils.ParamString(intent.Params, "title")
 		_, err = b.NotificationsRepo.AddNotification(database.AddNotificationDto{
@@ -175,15 +176,13 @@ func (b *DiscordBot) handleNotifications(intent *llm.IntentResult, discordMeta *
 			Message:  utils.ParamString(intent.Params, "description"),
 		})
 		if err != nil {
-			log.Println("failed to add notification:", err)
-			return
+			return fmt.Errorf("failed to add notification:", err)
 		}
 		replyContent = fmt.Sprintf("✅ Scheduled **%s** for %s", title, notifyAt.Format("Jan 02, 2006 15:04 MST"))
 	case "edit":
 		notifyAt, err := time.Parse(time.RFC3339, utils.ParamString(intent.Params, "notify_at"))
 		if err != nil {
-			log.Println("failed to parse notify_at:", err)
-			return
+			return fmt.Errorf("failed to parse notify_at:", err)
 		}
 		title := utils.ParamString(intent.Params, "title")
 		_, err = b.NotificationsRepo.EditNotification(database.EditNotificationDto{
@@ -195,20 +194,17 @@ func (b *DiscordBot) handleNotifications(intent *llm.IntentResult, discordMeta *
 			Message:  utils.ParamString(intent.Params, "description"),
 		})
 		if err != nil {
-			log.Println("failed to edit notification:", err)
-			return
+			return fmt.Errorf("failed to edit notification:", err)
 		}
 		replyContent = fmt.Sprintf("✏️ Updated **%s** to %s", title, notifyAt.Format("Jan 02, 2006 15:04 MST"))
 	case "delete":
 		notificationId, err := uuid.Parse(utils.ParamString(intent.Params, "notification_id"))
 		if err != nil {
-			log.Println("failed to parse notification_id:", err)
-			return
+			return fmt.Errorf("failed to parse notification_id:", err)
 		}
 		err = b.NotificationsRepo.DeleteNotification(notificationId)
 		if err != nil {
-			log.Println("failed to delete notification:", err)
-			return
+			return fmt.Errorf("failed to delete notification:", err)
 		}
 		replyContent = fmt.Sprintf("🗑️ Deleted notification `%s`", notificationId)
 	}
@@ -225,6 +221,7 @@ func (b *DiscordBot) handleNotifications(intent *llm.IntentResult, discordMeta *
 	}
 
 	b.updateNotifications()
+	return nil
 }
 
 func formatNotifications(notifications []models.Notification) string {
@@ -244,7 +241,7 @@ func formatNotifications(notifications []models.Notification) string {
 }
 
 func (b *DiscordBot) getFirstMessageInChannel(channelID string) (*discordgo.Message, error) {
-	messages, err := b.Session.ChannelMessages(channelID, 1, "", "", "0")
+	messages, err := b.Session.ChannelMessages(channelID, 1, "", "0", "")
 	if err != nil {
 		return nil, err
 	}
@@ -300,6 +297,7 @@ func (b *DiscordBot) dmUser(userID string, message string) error {
 
 func (b *DiscordBot) onReady(s *discordgo.Session, event *discordgo.Ready) {
 	log.Printf("Logged in as: %s#%s\n", event.User.Username, event.User.Discriminator)
+	b.updateNotifications()
 }
 
 func (b *DiscordBot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -309,6 +307,7 @@ func (b *DiscordBot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageC
 	}
 
 	intent, err := b.IntentService.DetectIntent(m.ChannelID, m.Content)
+	log.Printf("Intent: %v", intent)
 	if err != nil {
 		sentErrMsg, secondErr := s.ChannelMessageSend(m.ChannelID, err.Error())
 		if secondErr != nil {
@@ -321,11 +320,19 @@ func (b *DiscordBot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageC
 	if intent.Service == configs.ServiceNames.Scheduler {
 		discordMetadata := &configs.DiscordMetadata{
 			ChannelId: m.ChannelID,
-			MessageId: m.MessageReference.MessageID,
+			MessageId: m.ID,
 			UserId:    m.Author.ID,
 			Username:  m.Author.Username,
 		}
-		b.handleNotifications(intent, discordMetadata)
+		err := b.handleNotifications(intent, discordMetadata)
+		if err != nil {
+			sentErrMsg, secondErr := s.ChannelMessageSend(m.ChannelID, err.Error())
+			if secondErr != nil {
+				log.Printf("Failed to send discord message: %s", err.Error())
+			}
+			b.tagMessageToBeDeleted(sentErrMsg, 180)
+		}
+		b.tagMessageToBeDeleted(m.Message, 180)
 	}
 
 	// switch m.Content {
