@@ -238,13 +238,21 @@ Message: "%s"
 
 Rules:
 - For edit/delete: If user mentions an event by name, find the matching ID from "Current Data" Context above.
-- For datetime: The user is in Japan (JST, UTC+9). All times mentioned are JST. Format as RFC3339 with +09:00 offset. Example: if user says "12:00", output "2026-03-12T12:00:00+09:00", NOT "2026-03-12T03:00:00+09:00".
+- For edit: If the generated JSON has empty values, use the current data's field instead of leaving it empty.
+- For datetime: The user is in Japan. Times they mention are already in JST — do NOT add or subtract any hours.
+  The +09:00 suffix is a label only, not a math operation.
+  If user says "14:00", the output must contain T14:00:00+09:00, never T05:00:00+09:00 or any other hour.
+  Format: YYYY-MM-DDT{EXACT_TIME_USER_SAID}+09:00
+  Reference Current Time (JST) for relative expressions like "today", "tomorrow", "now".
+  "today" always means the current date (%s), even if the time has already passed. Do NOT advance to the next day.
 - For title: use a clean, concise name extracted from the message, not the raw message itself.
 - For description: briefly describe the event, do not repeat the raw message.
 - Use 2026 for missing years.
 
 Return ONLY valid JSON matching the schema.`,
-		serviceName, actionName, now.Format(time.RFC3339), contextStr, string(schemaJSON), message)
+		serviceName, actionName, now.Format(time.RFC3339), contextStr, string(schemaJSON), message, now.Format(time.RFC3339))
+
+	log.Printf("%s", prompt)
 
 	response := s.callLLM(prompt)
 
@@ -270,7 +278,7 @@ func (s *IntentService) buildContext(serviceName string) string {
 	var b strings.Builder
 	b.WriteString("Existing events:\n")
 	for _, n := range notifications {
-		fmt.Fprintf(&b, "- ID:%d, Name:\"%s\", Time:%s\n", n.ID, n.Message, n.NotifyAt.Format(time.RFC3339))
+		fmt.Fprintf(&b, "- ID:%s, Name:\"%s\", Time:%s\n", n.ID.String(), n.Message, n.NotifyAt.Format(time.RFC3339))
 	}
 	return b.String()
 }
